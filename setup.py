@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-import os.path
-
 from ec2_instance_tools import __version__
 from setuptools import setup, find_packages  # @UnresolvedImport
 
@@ -27,6 +25,7 @@ setup(name="ec2-instance-tools",
       ],
       entry_points={'console_scripts': [
           'sshec2 = ec2_instance_tools.sshec2:main',
-          'ec2namer = ec2_instance_tools.namer:main'
+          'ec2autonamer = ec2_instance_tools.namer:main'
+          'ec2whoami = ec2_instance_tools.whoami:main'
       ]}
       )

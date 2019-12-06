@@ -45,7 +45,7 @@ import sys
 
 import boto3
 
-from .metadata import EC2Metadata
+from ec2_instance_tools.metadata import EC2Metadata
 
 
 if sys.platform == "darwin":

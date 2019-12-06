@@ -70,6 +70,19 @@ the following rights:
 }
 ```
 
+## ec2whoami
+
+```
+Usage: whoami.py [flags]
+
+Get this instance's name tag, and save it to /etc/aws-instance-name for use by other programs.
+ec2whoami will ask the EC2 instance metadata endpoint for the instance id.
+
+
+Options:
+  -h, --help  show this help message and exit
+```
+
 ## Installing ec2-instance-tools
 
 ec2-instance-tools is a pure python package.  As such, it can be installed in the
