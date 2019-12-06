@@ -101,7 +101,7 @@ where {zone-abbr} is the availability zone name of the instance minus the region
 
 Otherwise: {autoscalinggroup_name}-{number}
 
-In both cases, `{number}` will be chosen to be the lowest positive integer that
+In both cases, {number} will be chosen to be the lowest positive integer that
 is not already taken by another instance in the autoscaling group.
 """
     parser = OptionParser(usage=usage)

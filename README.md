@@ -31,7 +31,7 @@ Usage: ec2autonamer [flags] [<instance-id>]
 If an instance was launched from an autoscaling group, it will come up with no
 Name: tag.  This script assigns an appropriate name tag to the instance.
 
-If <instance-id> is not supplied, namer.py will look in /etc/instance-id for the
+If <instance-id> is not supplied, ec2autonamer will look in /etc/instance-id for the
 instance id.
 
 The name will have one of the following patterns:
@@ -41,7 +41,7 @@ where {zone-abbr} is the availability zone name of the instance minus the region
 
 Otherwise: {autoscalinggroup_name}-{number}
 
-In both cases, `{number}` will be chosen to be the lowest positive integer that
+In both cases, {number} will be chosen to be the lowest positive integer that
 is not already taken by another instance in the autoscaling group.
 
 
@@ -88,8 +88,8 @@ pip install ec2-instance-tools
 Download a release from [Github](https://github.com/caltechads/ec2-instance-tools/releases), then:
 
 ```
-unzip ec2-instance-tools-0.29.9.zip
-cd ec2-instance-tools-0.29.9
+unzip ec2-instance-tools-0.1.0.zip
+cd ec2-instance-tools-0.1.0
 python setup.py install
 ```
 
