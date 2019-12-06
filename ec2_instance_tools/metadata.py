@@ -88,10 +88,3 @@ class EC2Metadata(object):
             return self._get('user-data')
 
         return self._get('meta-data/' + name)
-
-    def __getattribute__(self, name):
-        if name in self.METAOPTS:
-            return self.get(name)
-        else:
-            return object.__getattribute__(self, name)
-

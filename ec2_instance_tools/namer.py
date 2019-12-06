@@ -113,7 +113,7 @@ is not already taken by another instance in the autoscaling group.
     if len(argv) > 1:
         instance_id = argv[1]
     else:
-        instance_id = EC2Metadata().instance_id
+        instance_id = EC2Metadata().get('instance-id')
 
     if not instance_id:
         print(usage)

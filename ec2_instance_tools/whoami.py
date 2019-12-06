@@ -65,7 +65,7 @@ class Instance(object):
 
     def __init__(self):
         self.ec2 = boto3.resource('ec2')
-        instance_id = EC2Metadata().instance_id
+        instance_id = EC2Metadata().get('instance-id')
         self.instance = self.ec2.Instance(instance_id)
 
     @property
