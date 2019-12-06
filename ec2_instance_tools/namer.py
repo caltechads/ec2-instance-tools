@@ -45,6 +45,8 @@ import sys
 
 import boto3
 
+from .metadata import EC2Metadata
+
 
 if sys.platform == "darwin":
     address = '/var/run/syslog'
@@ -91,7 +93,7 @@ def parse_arguments(argv):
 If an instance was launched from an autoscaling group, it will come up with no
 Name: tag.  This script assigns an appropriate name tag to the instance.
 
-If <instance-id> is not supplied, %prog will look in /etc/instance-id for the
+If <instance-id> is not supplied, %prog will ask the EC2 instance metadata endpoint for the
 instance id.
 
 The name will have one of the following patterns:
@@ -112,9 +114,7 @@ is not already taken by another instance in the autoscaling group.
     if len(argv) > 1:
         instance_id = argv[1]
     else:
-        if os.path.exists('/etc/instance-id'):
-            with open('/etc/instance-id', 'r') as fd:
-                instance_id = fd.read().strip()
+        instance_id = EC2Metadata().instance_id
 
     if not instance_id:
         print(usage)

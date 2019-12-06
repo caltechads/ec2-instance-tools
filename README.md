@@ -31,8 +31,8 @@ Usage: ec2autonamer [flags] [<instance-id>]
 If an instance was launched from an autoscaling group, it will come up with no
 Name: tag.  This script assigns an appropriate name tag to the instance.
 
-If <instance-id> is not supplied, ec2autonamer will look in /etc/instance-id for the
-instance id.
+If <instance-id> is not supplied, ec2autonamer will ask the EC2 instance metadata 
+endpoint for the instance id.
 
 The name will have one of the following patterns:
 
