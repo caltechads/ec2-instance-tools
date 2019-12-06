@@ -48,10 +48,9 @@ import boto3
 from ec2_instance_tools.metadata import EC2Metadata
 
 
+address = '/dev/log'
 if sys.platform == "darwin":
     address = '/var/run/syslog'
-elif sys.platform == 'linux':
-    address = '/dev/log'
 
 LOGGING = {
     'version': 1,
