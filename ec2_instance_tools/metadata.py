@@ -1,18 +1,10 @@
 #!/usr/bin/env python
-import os
+import json
 import socket
 import time
-import urllib
-
+import requests
 
 import boto3
-
-METAOPTS = ['ami-id', 'ami-launch-index', 'ami-manifest-path',
-            'ancestor-ami-id', 'availability-zone', 'block-device-mapping',
-            'instance-id', 'instance-type', 'local-hostname', 'local-ipv4',
-            'kernel-id', 'product-codes', 'public-hostname', 'public-ipv4',
-            'public-keys', 'ramdisk-id', 'reserveration-id', 'security-groups',
-            'user-data']
 
 
 class EC2Metadata(object):
@@ -29,6 +21,7 @@ class EC2Metadata(object):
         'block-device-mapping',
         'instance-id',
         'instance-type',
+        'region',
         'local-hostname',
         'local-ipv4',
         'kernel-id',
@@ -42,7 +35,7 @@ class EC2Metadata(object):
         'user-data'
     ]
 
-    def __init__(self, addr='169.254.169.254', api='2008-02-01'):
+    def __init__(self, addr='169.254.169.254', api='latest'):
         self.ec2 = boto3.resource('ec2')
         self.addr = addr
         self.api = api
@@ -66,10 +59,10 @@ class EC2Metadata(object):
         Make the request to the metadata URL.
         """
         url = 'http://{}/{}/{}/'.format(self.addr, self.api, uri)
-        value = urllib.urlopen(url).read()
-        if "404 - Not Found" in value:
+        response = requests.get(url)
+        if "404 - Not Found" in response.text:
             return None
-        return value
+        return response.text
 
     def get(self, name):
         if name == 'availability-zone':
@@ -86,5 +79,8 @@ class EC2Metadata(object):
 
         if name == 'user-data':
             return self._get('user-data')
+
+        if name == 'region':
+            return json.loads(self._get('dynamic/instance-identity/document'))['region']
 
         return self._get('meta-data/' + name)
