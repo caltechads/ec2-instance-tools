@@ -116,7 +116,7 @@ is not already taken by another instance in the autoscaling group.
         instance_id = EC2Metadata().get('instance-id')
 
     if not instance_id:
-        print(usage)
+        parser.print_usage()
         sys.exit(1)
     return (options, instance_id)
 
