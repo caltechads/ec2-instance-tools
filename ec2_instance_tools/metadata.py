@@ -7,13 +7,6 @@ import urllib
 
 import boto3
 
-METAOPTS = ['ami-id', 'ami-launch-index', 'ami-manifest-path',
-            'ancestor-ami-id', 'availability-zone', 'block-device-mapping',
-            'instance-id', 'instance-type', 'local-hostname', 'local-ipv4',
-            'kernel-id', 'product-codes', 'public-hostname', 'public-ipv4',
-            'public-keys', 'ramdisk-id', 'reserveration-id', 'security-groups',
-            'user-data']
-
 
 class EC2Metadata(object):
     """

@@ -22,6 +22,7 @@ setup(name="ec2-instance-tools",
       include_package_data=True,
       install_requires=[
           "boto3 >= 1.7.55",
+          "urllib3 < 2"
       ],
       entry_points={'console_scripts': [
           'sshec2 = ec2_instance_tools.sshec2:main',
