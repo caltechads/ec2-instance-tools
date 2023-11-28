@@ -2,6 +2,7 @@
 import logging
 import logging.config
 from optparse import OptionParser
+import os
 import sys
 
 import boto3
@@ -46,6 +47,9 @@ LOGGING = {
 logging.config.dictConfig(LOGGING)
 logger = logging.getLogger('whoami')
 
+METADATA = EC2Metadata()
+os.environ['AWS_DEFAULT_REGION'] = METADATA.get('region')
+
 
 def parse_arguments(argv):
     usage = """usage: %prog [flags]
@@ -55,6 +59,9 @@ Get this instance's name tag, and save it to /etc/aws-instance-name for use by o
 """
     parser = OptionParser(usage=usage)
     (options, args) = parser.parse_args(argv)
+    if len(argv) > 1:
+        parser.print_usage()
+        sys.exit(1)
     return (options, args)
 
 
@@ -65,7 +72,7 @@ class Instance(object):
 
     def __init__(self):
         self.ec2 = boto3.resource('ec2')
-        instance_id = EC2Metadata().get('instance-id')
+        instance_id = METADATA.get('instance-id')
         self.instance = self.ec2.Instance(instance_id)
 
     @property

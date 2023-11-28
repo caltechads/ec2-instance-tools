@@ -21,7 +21,8 @@ setup(name="ec2-instance-tools",
       packages=find_packages(),
       include_package_data=True,
       install_requires=[
-          "boto3 >= 1.7.55",
+          "boto3 >= 1.10",
+          "requests >= 2.20",
           "urllib3 < 2"
       ],
       entry_points={'console_scripts': [

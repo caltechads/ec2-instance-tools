@@ -28,8 +28,8 @@ and exit.
 
     (options, args) = parser.parse_args(argv)
 
-    if len(args) == 0:
-        print(usage)
+    if len(args) == 1:
+        parser.print_usage()
         sys.exit(1)
     value = args[1]
     cmd = ""
@@ -83,7 +83,7 @@ def main(argv=None):
     try:
         instance = Instance(value, tag=options.tag)
     except KeyError as e:
-        sys.stderr.write(str(e))
+        sys.stderr.write(str(e) + "\n")
         return 1
     except ValueError:
         return 1
