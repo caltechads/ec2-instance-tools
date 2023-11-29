@@ -1,58 +1,63 @@
 #!/usr/bin/env python
+# pylint: disable=logging-format-interpolation
 """
-If an instance was launched from an autoscaling group, it will come up with no Name: tag.
-This script assigns an appropriate name tag to the instance.  The name will have one
-of the following patterns.
+If an instance was launched from an autoscaling group, it will come up with no
+Name: tag.  This script assigns an appropriate name tag to the instance.  The
+name will have one of the following patterns.
 
 If this instance is an ECS container machine:
     ecs.{asg.name}.{zone-abbr}.{number}
 
-Where {zone-abbr} is the availability zone name of the instance minus the region name
+Where {zone-abbr} is the availability zone name of the instance minus the region
+name
 
 Otherwise:
     {asg.name}-{number}
 
-In both cases, ${number} will be chosen to be the lowest positive integer that is
-not already taken by another instance in the autoscaling group.
+In both cases, ${number} will be chosen to be the lowest positive integer that
+is not already taken by another instance in the autoscaling group.
 
-In order to run this on an instance, you'll need to have a policy with this body attached to the instance
-role::
+In order to run this on an instance, you'll need to have a policy with this body
+attached to the instance role::
 
-
-{
-  "Version": "2012-10-17",
-  "Statement": [
     {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags",
-        "ec2:DeleteTags",
-        "ec2:Describe*"
-        "autoscaling:Describe*"
-      ],
-      "Resource": ["*"]
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+        "Effect": "Allow",
+        "Action": [
+            "ec2:CreateTags",
+            "ec2:DeleteTags",
+            "ec2:Describe*"
+            "autoscaling:Describe*"
+        ],
+        "Resource": ["*"]
+        }
+    ]
     }
-  ]
-}
 """
 
 import logging
 import logging.config
-from optparse import OptionParser
+from optparse import OptionParser  # pylint: disable=deprecated-module
 import os
 import re
 import sys
+import random
+import time
+from typing import Dict, Any, List
 
 import boto3
 
-from ec2_instance_tools.metadata import EC2Metadata
+from .metadata import EC2Metadata
 
 
-address = '/dev/log'
+address: str = '/dev/log'
 if sys.platform == "darwin":
     address = '/var/run/syslog'
 
-LOGGING = {
+
+LOGGING: Dict[str, Any] = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
@@ -92,22 +97,23 @@ def parse_arguments(argv):
 If an instance was launched from an autoscaling group, it will come up with no
 Name: tag.  This script assigns an appropriate name tag to the instance.
 
-If <instance-id> is not supplied, %prog will ask the EC2 instance metadata endpoint for the
-instance id.
+If <instance-id> is not supplied, %prog will ask the EC2 instance metadata
+endpoint for the instance id.
 
 The name will have one of the following patterns:
 
-If this instance is an ECS container machine: ecs.{autoscalinggroup_name}.{zone-abbr}.{number},
-where {zone-abbr} is the availability zone name of the instance minus the region name.
+If this instance is an ECS container machine:
+ecs.{autoscalinggroup_name}.{zone-abbr}.{number}, where {zone-abbr} is the
+availability zone name of the instance minus the region name.
 
 Otherwise: {autoscalinggroup_name}-{number}
 
-In both cases, {number} will be chosen to be the lowest positive integer that
-is not already taken by another instance in the autoscaling group.
+In both cases, {number} will be chosen to be the lowest positive integer that is
+not already taken by another instance in the autoscaling group.
 """
     parser = OptionParser(usage=usage)
 
-    (options, args) = parser.parse_args(argv)
+    (options, _) = parser.parse_args(argv)
 
     instance_id = None
     if len(argv) > 1:
@@ -123,88 +129,144 @@ is not already taken by another instance in the autoscaling group.
 
 class Instance(object):
     """
-    This is a wrapper class to boto3.ec2.Instance to mostly make working with instance tags more straightforward.
+    This is a wrapper class to boto3.ec2.Instance to mostly make working with
+    instance tags more straightforward.
     """
 
-    def __init__(self, instance_id):
+    def __init__(self, instance_id: str) -> None:
         self.ec2 = boto3.resource('ec2')
         self.instance = self.ec2.Instance(instance_id)
 
     @property
-    def instance_id(self):
+    def instance_id(self) -> str:
+        """
+        Return the instance id of this instance.
+        """
         return self.instance.instance_id
 
     @property
-    def tags(self):
+    def tags(self) -> Dict[str, str]:
+        """
+        Return the tags for this instance as a dictionary.
+        """
         tags = {}
         for tag in self.instance.tags:
             tags[tag['Key']] = tag['Value']
         return tags
 
     @property
-    def zone(self):
+    def zone(self) -> str:
+        """
+        Return the availability zone of this instance.
+        """
         return self.instance.placement['AvailabilityZone']
 
     @property
-    def zone_abbr(self):
+    def zone_abbr(self) -> str:
         """
         Return the zone name minus the region name.
 
-        If the zone is "us-west-2b", return "b".
+        Example:
+            If the zone is "us-west-2b", return "b".
         """
         return re.sub(boto3.session.Session().region_name, "", self.zone)
 
     @property
-    def name(self):
+    def name(self) -> str:
+        """
+        Return the current Name tag on this instance.
+
+        Returns:
+            The value of the Name tag, or None if there is no Name tag.
+        """
         return self.tags.get('Name', None)
 
     @name.setter
-    def name(self, name):
+    def name(self, name: str) -> None:
+        """
+        Set the Name tag on this instance to ``name``.
+
+        Args:
+            name: the name to set
+        """
         self.instance.create_tags(Tags=[{'Key': 'Name', 'Value': name}])
 
     @property
-    def autoscaling_group(self):
+    def autoscaling_group(self) -> str:
+        """
+        Return the autoscaling group name for this instance.
+        """
         return self.tags.get('aws:autoscaling:groupName', None)
 
 
 class GroupNamer(object):
+    """
+    Set the name for an instance that is part of an autoscaling group but is not
+    part of an ECS cluster.  The name will have the pattern
+    "{group.name}-{number}".
+    """
 
-    def __init__(self, instance_id):
+    def __init__(self, instance_id: str) -> None:
         self.instance = Instance(instance_id)
-        logger.info('instance.loaded instance_id={}'.format(self.instance.instance_id))
+        logger.info(
+            'instance.loaded instance_id={}'.format(self.instance.instance_id)
+        )
         if self.instance.name:
             logger.error('instance.has-name instance_id={} name={}'.format(
                 self.instance.instance_id,
                 self.instance.name
             ))
-            raise ValueError('Instance {} already has a name.'.format(self.instance.instance_id))
+            raise ValueError(
+                'Instance {} already has a name.'.format(self.instance.instance_id)
+            )
         if not self.instance.autoscaling_group:
-            logger.error('instance.not-in-asg instance_id={}'.format(self.instance.instance_id, self.instance.name))
-            raise KeyError('Instance {} is not in an autoscaling group'.format(self.instance.instance_id))
-        asg = boto3.client('autoscaling')
-        self.group = asg.describe_auto_scaling_groups(
-            AutoScalingGroupNames=[self.instance.autoscaling_group]
-        )['AutoScalingGroups'][0]
-        logger.info('group.loaded group_name={} n_instances={}'.format(self.name, len(self.group['Instances'])))
+            logger.error(
+                'instance.not-in-asg instance_id={}'.format(
+                    self.instance.instance_id
+                )
+            )
+            raise KeyError(
+                'Instance {} is not in an autoscaling group'.format(
+                    self.instance.instance_id
+                )
+            )
+        self.asg = boto3.client('autoscaling')
+        logger.info(
+            'group.loaded group_name={} n_instances={}'.format(
+                self.name,
+                len(self.group['Instances'])
+            )
+        )
 
     @property
-    def name(self):
+    def group(self) -> Dict[str, Any]:
+        self.group = self.asg.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[self.instance.autoscaling_group]
+        )['AutoScalingGroups'][0]
+
+    @property
+    def name(self) -> str:
+        """
+        Return the name of the autoscaling group that this instance is in.
+        """
         return self.group['AutoScalingGroupName']
 
     @property
-    def name_pattern(self):
+    def name_pattern(self) -> str:
         """
-        Set the naming pattern for instances in this ASG.  Pattern: "{group.name}-{number}".
+        Set the naming pattern for instances in this ASG.  Pattern:
+        "{group.name}-{number}".
         """
         return "{}-".format(re.sub("_", "-", self.name))
 
     @property
-    def live_instances(self):
+    def live_instances(self) -> List[Instance]:
         """
-        Return a list of boto3.ec2.Instance objects of all the running instances in the ASG that
-        are not self.instance.
+        Return a list of :py:class:`Instance` objects of all the running instances
+        in the ASG that are not :py:attr:`instance`.
         """
-        live = []
+        live: List[Instance] = []
+        unnamed: List[Instance] = []
         for sibling in self.group['Instances']:
             # Ignore any instances that are leaving or have left the group
             if sibling['LifecycleState'] in [
@@ -222,55 +284,90 @@ class GroupNamer(object):
             instance = Instance(sibling['InstanceId'])
             # Ignore unnamed instances
             if not instance.name:
+                unnamed.append(instance)
                 continue
             live.append(instance)
+        # If there are any unnamed instances in the same AZ as self.instance,
+        # sleep for a random amount of time between 0 and 20 seconds to try
+        # to avoid choosing the same name that one of those instances will
+        # choose.  We need each instance to choose a unique name so that our
+        # graphite and statsd reporting will work correctly.
+        unnamed_same_zone = [
+            instance for instance in unnamed
+            if instance.zone == self.instance.zone
+        ]
+        if unnamed_same_zone:
+            sleep_time = random.uniform(0, 20)
+            logger.info(
+                'instances.unnamed-same-zone n_instances={} sleeping={}s'.format(
+                    len(unnamed_same_zone),
+                    sleep_time
+                )
+            )
+            time.sleep(sleep_time)
         return live
 
     @property
-    def existing_names(self):
+    def existing_names(self) -> List[str]:
         """
-        Return a list of Name tag values for all live instances that are not self.instance.
+        Return a list of Name tag values for all live instances that are not
+        self.instance.
         """
         return [instance.name for instance in self.live_instances]
 
-    def name_instance(self):
+    def name_instance(self) -> None:
         """
-        Set the Name tag on self.instance.  Choose a name with the lowest number that does not conflict with other
-        running instances in the ASG.
+        Set the Name tag on :py:attr:`instance`.  Choose a name with the lowest
+        number that does not conflict with other running instances in the ASG.
         """
         taken = self.existing_names
-        i = 1
+        i: int = 1
         while True:
             name = "{}{}".format(self.name_pattern, i)
             if name not in taken:
                 break
             i += 1
         self.instance.name = name
-        logger.info('instance.named instance_id={} name={}'.format(self.instance.instance_id, name))
+        logger.info(
+            'instance.named instance_id={} name={}'.format(
+                self.instance.instance_id,
+                name
+            )
+        )
 
 
 class ECSGroupNamer(GroupNamer):
+    """
+    Set the name for an instance that is part of an ECS cluster. The name will
+    have the pattern "ecs.{group.name}.{zone-abbr}.{number}".
+    """
 
     @property
-    def name_pattern(self):
+    def name_pattern(self) -> str:
         """
-        Set the naming pattern for instances in this ECS cluster ASG.  Pattern: "ecs.{group.name}.{zone-abbr}.{number}".
+        Get the naming pattern for instances in this ECS cluster ASG.  Pattern:
+        "ecs.{group.name}.{zone-abbr}.{number}".
         """
         return "ecs.{}.{}.".format(self.name, self.instance.zone_abbr)
 
     @property
-    def existing_names(self):
+    def existing_names(self) -> List[str]:
         """
-        Return the list of Name tag values for all live instances in the same AZ as self.instance.
+        Return the list of Name tag values for all live instances in the same AZ
+        as self.instance.
         """
-        return [instance.name for instance in self.live_instances if instance.zone == self.instance.zone]
+        return [
+            instance.name
+            for instance in self.live_instances
+            if instance.zone == self.instance.zone
+        ]
 
 
 def main(argv=sys.argv):
     """
     argv[1] is the instance id for this instance.
     """
-    (options, instance_id) = parse_arguments(argv)
+    (_, instance_id) = parse_arguments(argv)
 
     if os.path.exists('/etc/ecs/ecs.config'):
         logger.info('start instance_id={} type=ecs'.format(instance_id))
