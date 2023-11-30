@@ -101,8 +101,8 @@ pip install ec2-instance-tools
 Download a release from [Github](https://github.com/caltechads/ec2-instance-tools/releases), then:
 
 ```
-unzip ec2-instance-tools-0.3.4.zip
-cd ec2-instance-tools-0.3.4
+unzip ec2-instance-tools-0.3.5.zip
+cd ec2-instance-tools-0.3.5
 python setup.py install
 ```
 
