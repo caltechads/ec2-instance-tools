@@ -45,7 +45,7 @@ import re
 import sys
 import random
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 import boto3
 
@@ -145,7 +145,7 @@ class Instance(object):
         return self.instance.instance_id
 
     @property
-    def tags(self) -> Dict[str, str]:
+    def tags(self) -> Dict[str, Optional[str]]:
         """
         Return the tags for this instance as a dictionary.
         """
@@ -240,7 +240,11 @@ class GroupNamer(object):
 
     @property
     def group(self) -> Dict[str, Any]:
-        self.group = self.asg.describe_auto_scaling_groups(
+        """
+        Return the autoscaling group data that we get from
+        ``describe_auto_scaling_groups`` for the group :py:attr:`name`.
+        """
+        return self.asg.describe_auto_scaling_groups(
             AutoScalingGroupNames=[self.instance.autoscaling_group]
         )['AutoScalingGroups'][0]
 
