@@ -2,9 +2,10 @@
 import json
 import socket
 import time
-import requests
+from typing import Optional
 
 import boto3
+import requests
 
 
 class EC2Metadata(object):
@@ -35,16 +36,28 @@ class EC2Metadata(object):
         'user-data'
     ]
 
-    def __init__(self, addr='169.254.169.254', api='latest'):
+    def __init__(self, addr: str ='169.254.169.254', api: str = 'latest'):
         self.ec2 = boto3.resource('ec2')
         self.addr = addr
         self.api = api
         if not self._test_connectivity(self.addr, 80):
-            raise Exception("could not establish connection to: {0}".format(self.addr))
+            raise RuntimeError(
+                f"could not establish connection to: {self.addr}"
+            )
 
     @staticmethod
-    def _test_connectivity(addr, port):
-        for i in range(6):
+    def _test_connectivity(addr: str, port: int) -> bool:
+        """
+        Ensure we can connect to the metadata URL.
+
+        Args:
+            addr: the metadata address
+            port: the metadata port
+
+        Returns:
+            ``True`` if we can connect, ``False`` otherwise.
+        """
+        for _ in range(6):
             s = socket.socket()
             try:
                 s.connect((addr, port))
@@ -54,17 +67,30 @@ class EC2Metadata(object):
                 time.sleep(1)
         return False
 
-    def _get(self, uri):
+    def _get(self, path: str) -> Optional[str]:
         """
         Make the request to the metadata URL.
+
+        Args:
+            path: the path under the metadata URL to query
         """
-        url = 'http://{}/{}/{}/'.format(self.addr, self.api, uri)
-        response = requests.get(url)
+        url = f'http://{self.addr}/{self.api}/{path}/'
+        response = requests.get(url, timeout=15)
         if "404 - Not Found" in response.text:
             return None
         return response.text
 
-    def get(self, name):
+    def get(self, name: str) -> Optional[str]:
+        """
+        Get the value of a metadata key.
+
+        Args:
+            name: the name of the metadata key to query
+
+        Returns:
+            The value of the metadata key, or ``None`` if the key does not
+            exist.
+        """
         if name == 'availability-zone':
             return self._get('meta-data/placement/availability-zone')
 

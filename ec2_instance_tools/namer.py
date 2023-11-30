@@ -172,7 +172,7 @@ class Instance(object):
         return re.sub(boto3.session.Session().region_name, "", self.zone)
 
     @property
-    def name(self) -> str:
+    def name(self) -> Optional[str]:
         """
         Return the current Name tag on this instance.
 
@@ -192,7 +192,7 @@ class Instance(object):
         self.instance.create_tags(Tags=[{'Key': 'Name', 'Value': name}])
 
     @property
-    def autoscaling_group(self) -> str:
+    def autoscaling_group(self) -> Optional[str]:
         """
         Return the autoscaling group name for this instance.
         """
@@ -263,11 +263,32 @@ class GroupNamer(object):
         """
         return "{}-".format(re.sub("_", "-", self.name))
 
-    @property
-    def live_instances(self) -> List[Instance]:
+    def get_unnamed_instances(self, instances: List[Instance]) -> List[Instance]:
+        """
+        Possibly filter the list of instances.  This exists so that it can be
+        overriding in subclasses.
+
+        Args:
+            instances: a list of instances in the same ASG as :py:attr:`instance`
+                that do not have a Name tag.
+
+        Returns:
+            A possibly filtered list of instances.
+        """
+        return instances
+
+    def named_instances(self, retry: bool = False) -> List[Instance]:
         """
         Return a list of :py:class:`Instance` objects of all the running instances
-        in the ASG that are not :py:attr:`instance`.
+        in the ASG that are not :py:attr:`instance`, and that have a Name tag.
+
+        Keyword Args:
+            retry: if True, we've already tried to get the list of instances
+                at least once, and this is our second attempt, so don't
+                do the sleep to try to avoid naming conflicts.
+
+        Returns:
+            A list of :py:class:`Instance` objects that have a Name tag.
         """
         live: List[Instance] = []
         unnamed: List[Instance] = []
@@ -291,33 +312,34 @@ class GroupNamer(object):
                 unnamed.append(instance)
                 continue
             live.append(instance)
-        # If there are any unnamed instances in the same AZ as self.instance,
-        # sleep for a random amount of time between 0 and 20 seconds to try
-        # to avoid choosing the same name that one of those instances will
-        # choose.  We need each instance to choose a unique name so that our
-        # graphite and statsd reporting will work correctly.
-        unnamed_same_zone = [
-            instance for instance in unnamed
-            if instance.zone == self.instance.zone
-        ]
-        if unnamed_same_zone:
-            sleep_time = random.uniform(0, 20)
-            logger.info(
-                'instances.unnamed-same-zone n_instances={} sleeping={}s'.format(
-                    len(unnamed_same_zone),
-                    sleep_time
+        if not retry:
+            # If there are any other unnamed instances, sleep for a random amount
+            # of time between 0 and 20 seconds to try to avoid choosing the same
+            # name that one of those instances will choose.  We need each
+            # instance to choose a unique name so that our graphite and statsd
+            # reporting will work correctly.
+            _unnamed = self.get_unnamed_instances(unnamed)
+            if _unnamed:
+                sleep_time = random.uniform(0, 20)
+                logger.info(
+                    'instances.unnamed-same-zone n_instances={} sleeping={}s'.format(
+                        len(_unnamed),
+                        sleep_time
+                    )
                 )
-            )
-            time.sleep(sleep_time)
+                time.sleep(sleep_time)
+                # Reload the list of live instances; hopefully the other unnamed
+                # instances have named themselves by now.
+                return self.named_instances(retry=True)
         return live
 
     @property
     def existing_names(self) -> List[str]:
         """
         Return a list of Name tag values for all live instances that are not
-        self.instance.
+        :py:attr:`instance`.
         """
-        return [instance.name for instance in self.live_instances]
+        return [instance.name for instance in self.named_instances()]
 
     def name_instance(self) -> None:
         """
@@ -327,7 +349,7 @@ class GroupNamer(object):
         taken = self.existing_names
         i: int = 1
         while True:
-            name = "{}{}".format(self.name_pattern, i)
+            name = f"{self.name_pattern}{i}"
             if name not in taken:
                 break
             i += 1
@@ -354,6 +376,19 @@ class ECSGroupNamer(GroupNamer):
         """
         return "ecs.{}.{}.".format(self.name, self.instance.zone_abbr)
 
+    def get_unnamed_instances(self, instances: List[Instance]) -> List[Instance]:
+        """
+        For ECS clusters, we only want to consider instances in the same AZ as
+        :py:attr:`instance`.
+
+        Args:
+            instances: the list of instances to filter
+
+        Returns:
+            A list of unnamed instances in the same AZ as :py:attr:`instance`.
+        """
+        return [instance for instance in instances if instance.zone == self.instance.zone]
+
     @property
     def existing_names(self) -> List[str]:
         """
@@ -362,7 +397,7 @@ class ECSGroupNamer(GroupNamer):
         """
         return [
             instance.name
-            for instance in self.live_instances
+            for instance in self.named_instances()
             if instance.zone == self.instance.zone
         ]
 
