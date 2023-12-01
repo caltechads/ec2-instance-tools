@@ -43,52 +43,48 @@ from optparse import OptionParser  # pylint: disable=deprecated-module
 import os
 import re
 import sys
-import random
-import time
-from typing import Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, List, Optional, cast
 
 import boto3
 
 from .metadata import EC2Metadata
 
 
-address: str = '/dev/log'
+address: str = "/dev/log"
 if sys.platform == "darwin":
-    address = '/var/run/syslog'
+    address = "/var/run/syslog"
 
 
 LOGGING: Dict[str, Any] = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "stderr": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stderr,
+            "formatter": "verbose",
+        },
+        "syslog": {
+            "class": "logging.handlers.SysLogHandler",
+            "address": address,
+            "facility": "local0",
+            "formatter": "verbose",
         },
     },
-    'handlers': {
-        'stderr': {
-            'class': 'logging.StreamHandler',
-            'stream': sys.stderr,
-            'formatter': 'verbose',
-        },
-        'syslog': {
-            'class': 'logging.handlers.SysLogHandler',
-            'address': address,
-            'facility': "local0",
-            'formatter': 'verbose',
+    "loggers": {
+        "autonamer": {
+            "handlers": ["syslog", "stderr"],
+            "level": logging.DEBUG,
+            "propagate": True,
         },
     },
-    'loggers': {
-        'autonamer': {
-            'handlers': ['syslog', 'stderr'],
-            'level': logging.DEBUG,
-            'propagate': True,
-        },
-    }
 }
 
 logging.config.dictConfig(LOGGING)
-logger = logging.getLogger('autonamer')
+logger = logging.getLogger("autonamer")
 
 
 def parse_arguments(argv):
@@ -119,7 +115,7 @@ not already taken by another instance in the autoscaling group.
     if len(argv) > 1:
         instance_id = argv[1]
     else:
-        instance_id = EC2Metadata().get('instance-id')
+        instance_id = EC2Metadata().get("instance-id")
 
     if not instance_id:
         parser.print_usage()
@@ -134,7 +130,7 @@ class Instance(object):
     """
 
     def __init__(self, instance_id: str) -> None:
-        self.ec2 = boto3.resource('ec2')
+        self.ec2 = boto3.resource("ec2")
         self.instance = self.ec2.Instance(instance_id)
 
     @property
@@ -151,7 +147,7 @@ class Instance(object):
         """
         tags = {}
         for tag in self.instance.tags:
-            tags[tag['Key']] = tag['Value']
+            tags[tag["Key"]] = tag["Value"]
         return tags
 
     @property
@@ -159,7 +155,7 @@ class Instance(object):
         """
         Return the availability zone of this instance.
         """
-        return self.instance.placement['AvailabilityZone']
+        return self.instance.placement["AvailabilityZone"]
 
     @property
     def zone_abbr(self) -> str:
@@ -179,7 +175,7 @@ class Instance(object):
         Returns:
             The value of the Name tag, or None if there is no Name tag.
         """
-        return self.tags.get('Name', None)
+        return self.tags.get("Name", None)
 
     @name.setter
     def name(self, name: str) -> None:
@@ -189,14 +185,14 @@ class Instance(object):
         Args:
             name: the name to set
         """
-        self.instance.create_tags(Tags=[{'Key': 'Name', 'Value': name}])
+        self.instance.create_tags(Tags=[{"Key": "Name", "Value": name}])
 
     @property
     def autoscaling_group(self) -> Optional[str]:
         """
         Return the autoscaling group name for this instance.
         """
-        return self.tags.get('aws:autoscaling:groupName', None)
+        return self.tags.get("aws:autoscaling:groupName", None)
 
 
 class GroupNamer(object):
@@ -208,33 +204,29 @@ class GroupNamer(object):
 
     def __init__(self, instance_id: str) -> None:
         self.instance = Instance(instance_id)
-        logger.info(
-            'instance.loaded instance_id={}'.format(self.instance.instance_id)
-        )
+        logger.info(f"instance.loaded instance_id={self.instance.instance_id}")
         if self.instance.name:
-            logger.error('instance.has-name instance_id={} name={}'.format(
-                self.instance.instance_id,
-                self.instance.name
-            ))
+            logger.error(
+                "instance.has-name instance_id={} name={}".format(
+                    self.instance.instance_id, self.instance.name
+                )
+            )
             raise ValueError(
-                'Instance {} already has a name.'.format(self.instance.instance_id)
+                "Instance {} already has a name.".format(self.instance.instance_id)
             )
         if not self.instance.autoscaling_group:
             logger.error(
-                'instance.not-in-asg instance_id={}'.format(
-                    self.instance.instance_id
-                )
+                "instance.not-in-asg instance_id={}".format(self.instance.instance_id)
             )
             raise KeyError(
-                'Instance {} is not in an autoscaling group'.format(
+                "Instance {} is not in an autoscaling group".format(
                     self.instance.instance_id
                 )
             )
-        self.asg = boto3.client('autoscaling')
+        self.asg = boto3.client("autoscaling")
         logger.info(
-            'group.loaded group_name={} n_instances={}'.format(
-                self.name,
-                len(self.group['Instances'])
+            "group.loaded group_name={} n_instances={}".format(
+                self.group_name, len(self.group["Instances"])
             )
         )
 
@@ -246,14 +238,14 @@ class GroupNamer(object):
         """
         return self.asg.describe_auto_scaling_groups(
             AutoScalingGroupNames=[self.instance.autoscaling_group]
-        )['AutoScalingGroups'][0]
+        )["AutoScalingGroups"][0]
 
     @property
-    def name(self) -> str:
+    def group_name(self) -> str:
         """
         Return the name of the autoscaling group that this instance is in.
         """
-        return self.group['AutoScalingGroupName']
+        return self.group["AutoScalingGroupName"]
 
     @property
     def name_pattern(self) -> str:
@@ -261,26 +253,41 @@ class GroupNamer(object):
         Set the naming pattern for instances in this ASG.  Pattern:
         "{group.name}-{number}".
         """
-        return "{}-".format(re.sub("_", "-", self.name))
+        return "{}-".format(re.sub("_", "-", self.group_name))
 
-    def get_unnamed_instances(self, instances: List[Instance]) -> List[Instance]:
+    def get_named_instances(self, instances: List[Instance]) -> List[Instance]:
         """
-        Possibly filter the list of instances.  This exists so that it can be
-        overriding in subclasses.
+        Possibly filter the list of named instances.  This exists so that it can
+        be overriding in subclasses.
 
         Args:
-            instances: a list of instances in the same ASG as :py:attr:`instance`
-                that do not have a Name tag.
+            instances: a list of instances in the same ASG as
+                :py:attr:`instance` that do have a Name tag.
 
         Returns:
             A possibly filtered list of instances.
         """
         return instances
 
-    def named_instances(self, retry: bool = False) -> List[Instance]:
+    def get_unnamed_instances(self, instances: List[Instance]) -> List[Instance]:
         """
-        Return a list of :py:class:`Instance` objects of all the running instances
-        in the ASG that are not :py:attr:`instance`, and that have a Name tag.
+        Possibly filter the list of unnamed instances.  This exists so that it
+        can be overriding in subclasses.
+
+        Args:
+            instances: a list of instances in the same ASG as
+                :py:attr:`instance` that do not have a Name tag.
+
+        Returns:
+            A possibly filtered list of instances.
+        """
+        return instances
+
+    def instances(self, retry: bool = False) -> Tuple[List[Instance], List[Instance]]:
+        """
+        Return a list of :py:class:`Instance` objects of all the running
+        instances in the ASG that are not :py:attr:`instance`, and that have a
+        Name tag.
 
         Keyword Args:
             retry: if True, we've already tried to get the list of instances
@@ -288,76 +295,62 @@ class GroupNamer(object):
                 do the sleep to try to avoid naming conflicts.
 
         Returns:
-            A list of :py:class:`Instance` objects that have a Name tag.
+            A 2-tuple of list of :py:class:`Instance` objects that have a Name tag
+            and list of :py:class:`Instance` objects that do not have a Name tag.
         """
-        live: List[Instance] = []
+        named: List[Instance] = []
         unnamed: List[Instance] = []
-        for sibling in self.group['Instances']:
+        for sibling in self.group["Instances"]:
             # Ignore any instances that are leaving or have left the group
-            if sibling['LifecycleState'] in [
-                'Terminating',
-                'Terminating:Wait',
-                'Terminating:Proceed',
-                'Terminated',
-                'Detaching',
-                'Detached'
+            if sibling["LifecycleState"] in [
+                "Terminating",
+                "Terminating:Wait",
+                "Terminating:Proceed",
+                "Terminated",
+                "Detaching",
+                "Detached",
             ]:
                 continue
             # Ignore our own instance
-            if sibling['InstanceId'] == self.instance.instance_id:
+            if sibling["InstanceId"] == self.instance.instance_id:
                 continue
-            instance = Instance(sibling['InstanceId'])
+            instance = Instance(sibling["InstanceId"])
             # Ignore unnamed instances
             if not instance.name:
                 unnamed.append(instance)
                 continue
-            live.append(instance)
-        if not retry:
-            # If there are any other unnamed instances, sleep for a random amount
-            # of time between 0 and 20 seconds to try to avoid choosing the same
-            # name that one of those instances will choose.  We need each
-            # instance to choose a unique name so that our graphite and statsd
-            # reporting will work correctly.
+            named.append(instance)
             _unnamed = self.get_unnamed_instances(unnamed)
-            if _unnamed:
-                sleep_time = random.uniform(0, 20)
-                logger.info(
-                    'instances.unnamed-same-zone n_instances={} sleeping={}s'.format(
-                        len(_unnamed),
-                        sleep_time
-                    )
-                )
-                time.sleep(sleep_time)
-                # Reload the list of live instances; hopefully the other unnamed
-                # instances have named themselves by now.
-                return self.named_instances(retry=True)
-        return live
-
-    @property
-    def existing_names(self) -> List[str]:
-        """
-        Return a list of Name tag values for all live instances that are not
-        :py:attr:`instance`.
-        """
-        return [instance.name for instance in self.named_instances()]
+            _named = self.get_named_instances(named)
+        return _named, _unnamed
 
     def name_instance(self) -> None:
         """
-        Set the Name tag on :py:attr:`instance`.  Choose a name with the lowest
-        number that does not conflict with other running instances in the ASG.
+        Set the Name tag on :py:attr:`instance`.
         """
-        taken = self.existing_names
-        i: int = 1
-        while True:
-            name = f"{self.name_pattern}{i}"
-            if name not in taken:
-                break
-            i += 1
+        # get the list of instances in the ASG that both have and do not have a
+        # Name tag
+        named, unnamed = self.instances()
+        # For those instances that do have a Name tag, get the number suffix
+        taken = [cast(str, instance.name) for instance in named]
+        taken_ids = [name.replace(self.name_pattern, "") for name in taken]
+        # Now assign an untaken number suffix to each of the unnamed instances
+        # We need to do this determininstically so all the unnamed instances
+        # will get the same number suffixes on all the instances in the ASG
+        instance_ids = [instance.instance_id for instance in unnamed]
+        instance_ids.append(self.instance.instance_id)
+        instance_ids.sort()
+        _max = len(instance_ids) + len(taken_ids)
+        available_ids = [i for i in range(1, _max + 1) if str(i) not in taken_ids]
+        # Make a mapping of instance ids to available ids
+        mapping = dict(zip(instance_ids, available_ids))
+        # Choose the id assigned to our instance_id
+        name = f"{self.name_pattern}{mapping[self.instance.instance_id]}"
+        # Set the name
         self.instance.name = name
         logger.info(
-            'instance.named instance_id={} name={}'.format(
-                self.instance.instance_id,
-                name
+            "instance.named instance_id={} name={}".format(
+                self.instance.instance_id, name
             )
         )
 
@@ -374,7 +367,23 @@ class ECSGroupNamer(GroupNamer):
         Get the naming pattern for instances in this ECS cluster ASG.  Pattern:
         "ecs.{group.name}.{zone-abbr}.{number}".
         """
-        return "ecs.{}.{}.".format(self.name, self.instance.zone_abbr)
+        return "ecs.{}.{}.".format(self.group_name, self.instance.zone_abbr)
+
+    def get_named_instances(self, instances: List[Instance]) -> List[Instance]:
+        """
+        For ECS clusters, we only want to consider instances in the same AZ as
+        :py:attr:`instance`.
+
+        Args:
+            instances: a list of instances in the same ASG as
+                :py:attr:`instance` that do have a Name tag.
+
+        Returns:
+            A possibly filtered list of instances.
+        """
+        return [
+            instance for instance in instances if instance.zone == self.instance.zone
+        ]
 
     def get_unnamed_instances(self, instances: List[Instance]) -> List[Instance]:
         """
@@ -387,20 +396,9 @@ class ECSGroupNamer(GroupNamer):
         Returns:
             A list of unnamed instances in the same AZ as :py:attr:`instance`.
         """
-        return [instance for instance in instances if instance.zone == self.instance.zone]
-
-    @property
-    def existing_names(self) -> List[str]:
-        """
-        Return the list of Name tag values for all live instances in the same AZ
-        as self.instance.
-        """
         return [
-            instance.name
-            for instance in self.named_instances()
-            if instance.zone == self.instance.zone
+            instance for instance in instances if instance.zone == self.instance.zone
         ]
-
 
 def main(argv=sys.argv):
     """
@@ -408,11 +406,11 @@ def main(argv=sys.argv):
     """
     (_, instance_id) = parse_arguments(argv)
 
-    if os.path.exists('/etc/ecs/ecs.config'):
-        logger.info('start instance_id={} type=ecs'.format(instance_id))
+    if os.path.exists("/etc/ecs/ecs.config"):
+        logger.info("start instance_id={} type=ecs".format(instance_id))
         namer_class = ECSGroupNamer
     else:
-        logger.info('start instance_id={} type=asg'.format(instance_id))
+        logger.info("start instance_id={} type=asg".format(instance_id))
         namer_class = GroupNamer
 
     try:
@@ -422,7 +420,7 @@ def main(argv=sys.argv):
     except ValueError:
         return 1
     namer.name_instance()
-    logger.info('end instance_id={}'.format(instance_id))
+    logger.info("end instance_id={}".format(instance_id))
 
 
 if __name__ == "__main__":

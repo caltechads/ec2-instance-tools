@@ -17,6 +17,7 @@ flake8                                        # https://github.com/PyCQA/flake8
 pycodestyle                                   # https://github.com/PyCQA/pycodestyle
 mypy                                          # https://github.com/python/mypy
 pylint                                        # https://github.com/PyCQA/pylint
+black                                         # https://github.com/psf/black
 boto3-stubs
 
 # Other utils
