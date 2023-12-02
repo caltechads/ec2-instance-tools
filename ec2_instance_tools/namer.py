@@ -320,8 +320,8 @@ class GroupNamer(object):
                 unnamed.append(instance)
                 continue
             named.append(instance)
-            _unnamed = self.get_unnamed_instances(unnamed)
-            _named = self.get_named_instances(named)
+        _unnamed = self.get_unnamed_instances(unnamed)
+        _named = self.get_named_instances(named)
         return _named, _unnamed
 
     def name_instance(self) -> None:
