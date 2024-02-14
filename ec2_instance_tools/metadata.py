@@ -2,7 +2,7 @@
 import json
 import socket
 import time
-from typing import Any, Union, List
+from typing import Any, Union, List, Optional
 
 import boto3
 import requests
@@ -42,6 +42,18 @@ class EC2Metadata(object):
         self.api = api
         if not self._test_connectivity(self.addr, 80):
             raise RuntimeError(f"could not establish connection to: {self.addr}")
+        self.token: Optional[str] = None
+        self.connect()
+
+    def connect(self) -> None:
+        """
+        Get our API token and save it to the object.
+        """
+        response = requests.put(
+            f"http://{self.addr}/{self.api}/api/token",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+        )
+        self.token = response.text
 
     @staticmethod
     def _test_connectivity(addr: str, port: int) -> bool:
@@ -76,7 +88,11 @@ class EC2Metadata(object):
             The response body, or ``None`` if the specific metadata
         """
         url = f"http://{self.addr}/{self.api}/{path}/"
-        response = requests.get(url, timeout=15)
+        response = requests.get(
+            url,
+            timeout=15,
+            headers={"X-aws-ec2-metadata-token": self.token},
+        )
         if "404 - Not Found" in response.text:
             raise ValueError(f"metadata path not found: {path}")
         return response.text
